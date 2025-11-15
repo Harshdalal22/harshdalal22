@@ -5,7 +5,6 @@ export interface PartyDetails {
     contact: string;
     pan: string;
     gst: string;
-    stampUrl?: string;
 }
 
 export interface Item {
@@ -19,6 +18,16 @@ export interface BankDetails {
     branch: string;
     accountNo: string;
     ifscCode: string;
+}
+
+export interface DetailedCharges {
+    hamail: number;
+    surCharge: number;
+    stCharge: number;
+    collectionCharge: number;
+    ddCharge: number;
+    otherCharge: number;
+    riskCharge: number;
 }
 
 export interface LorryReceipt {
@@ -55,20 +64,13 @@ export interface LorryReceipt {
 
     weight: number;
     actualWeightMT: number;
-    height: number;
-    extraHeight: number;
 
     freight: number;
-    otherCharges: number;
-    cgst: number;
-    sgst: number;
-    igst: number;
+    charges: DetailedCharges;
     rate: number;
     rateOn: string;
 
     remark: string;
-    employee: string;
-    truckDriverNo: string;
 
     // Added for list view consistency
     createdBy?: string;

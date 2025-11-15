@@ -14,10 +14,7 @@ const initialLorryReceipts: LorryReceipt[] = [
         billingTo: { name: 'FALKON PREFAB', address: 'Baddi, HP', city: 'Baddi', contact: '', pan: '', gst: '' },
         items: [{ description: 'Building Material', pcs: 1, weight: 100 }],
         freight: 900.00,
-        otherCharges: 0,
-        cgst: 22.50,
-        sgst: 22.50,
-        igst: 0,
+        charges: { hamail: 0, surCharge: 0, stCharge: 0, collectionCharge: 0, ddCharge: 0, otherCharge: 0, riskCharge: 0 },
         createdBy: 'SSK',
         agent: 'SELF',
         weight: 100,
@@ -25,7 +22,7 @@ const initialLorryReceipts: LorryReceipt[] = [
         lrType: 'Original', invoiceNo: 'INV-001', invoiceAmount: 900, invoiceDate: '2025-07-28', poNo: '', poDate: '',
         ewayBillNo: '', ewayBillDate: '', ewayExDate: '', methodOfPacking: '', addressOfDelivery: 'Karnal Site', chargedWeight: 100, lorryType: '',
         gstPaidBy: 'Consignor',
-        actualWeightMT: 100, height: 0, extraHeight: 0, rate: 9, rateOn: 'Ton', remark: 'Handle with care', employee: 'SSK', truckDriverNo: ''
+        actualWeightMT: 100, rate: 9, rateOn: 'Ton', remark: 'Handle with care'
     },
     {
         lrNo: 'DEL/1023', date: '2025-10-08', truckNo: 'HR 65D 4473', fromPlace: 'BERI', toPlace: 'DELHI',
@@ -34,17 +31,14 @@ const initialLorryReceipts: LorryReceipt[] = [
         billingTo: { name: 'MG EMBALLAGE PVT LTD', address: 'Beri, HR', city: 'Beri', contact: '', pan: '', gst: '' },
         items: [{ description: 'Packaging Material', pcs: 1, weight: 5 }],
         freight: 7000.00,
-        otherCharges: 0,
-        cgst: 175,
-        sgst: 175,
-        igst: 0,
+        charges: { hamail: 0, surCharge: 0, stCharge: 0, collectionCharge: 0, ddCharge: 0, otherCharge: 0, riskCharge: 0 },
         createdBy: 'SSK',
         agent: 'SELF',
         weight: 5,
         lrType: 'Original', invoiceNo: 'INV-002', invoiceAmount: 7000, invoiceDate: '2025-10-08', poNo: '', poDate: '',
         ewayBillNo: '', ewayBillDate: '', ewayExDate: '', methodOfPacking: '', addressOfDelivery: 'Delhi Warehouse', chargedWeight: 5, lorryType: '',
         gstPaidBy: 'Consignor',
-        actualWeightMT: 5, height: 0, extraHeight: 0, rate: 1400, rateOn: 'Trip', remark: '', employee: 'SSK', truckDriverNo: ''
+        actualWeightMT: 5, rate: 1400, rateOn: 'Trip', remark: ''
     }
 ];
 

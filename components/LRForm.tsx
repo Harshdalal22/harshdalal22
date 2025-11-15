@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LorryReceipt, Item, PartyDetails } from '../types';
+import { LorryReceipt, Item, PartyDetails, DetailedCharges } from '../types';
 import LRPreviewModal from './LRPreviewModal';
 import { PlusIcon, TrashIcon, CreateIcon, ListIcon } from './icons';
 
@@ -10,6 +10,12 @@ interface LRFormProps {
     companyDetails: any;
     lorryReceipts: LorryReceipt[];
 }
+
+const initialPartyState: PartyDetails = { name: '', address: '', city: '', contact: '', pan: '', gst: '' };
+
+const initialChargesState: DetailedCharges = {
+    hamail: 0, surCharge: 0, stCharge: 0, collectionCharge: 0, ddCharge: 0, otherCharge: 0, riskCharge: 0
+};
 
 const initialLRState: Omit<LorryReceipt, 'lrNo'> = {
     lrType: 'Original',
@@ -30,39 +36,41 @@ const initialLRState: Omit<LorryReceipt, 'lrNo'> = {
     chargedWeight: 0,
     lorryType: '',
     gstPaidBy: 'Transporter',
-    consignor: { name: '', address: '', city: '', contact: '', pan: '', gst: '', stampUrl: '' },
-    consignee: { name: '', address: '', city: '', contact: '', pan: '', gst: '', stampUrl: '' },
-    billingTo: { name: '', address: '', city: '', contact: '', pan: '', gst: '', stampUrl: '' },
+    consignor: { ...initialPartyState },
+    consignee: { ...initialPartyState },
+    billingTo: { ...initialPartyState },
     agent: '',
     items: [{ description: 'corrugated box', pcs: 1, weight: 0 }],
     weight: 0,
     actualWeightMT: 0,
-    height: 0,
-    extraHeight: 0,
     freight: 0,
-    otherCharges: 0,
-    cgst: 0,
-    sgst: 0,
-    igst: 0,
+    charges: { ...initialChargesState },
     rate: 0,
-    rateOn: '',
+    rateOn: 'Ton',
     remark: '',
-    employee: '',
-    truckDriverNo: '',
 };
 
 const generateNewLrNo = (existingLrs: LorryReceipt[]): string => {
     const lrNumbers = existingLrs
-        .map(lr => parseInt(lr.lrNo.replace('DEL/', ''), 10))
+        .map(lr => parseInt(lr.lrNo.replace(/[^0-9]/g, ''), 10))
         .filter(num => !isNaN(num));
 
     if (lrNumbers.length === 0) {
-        return 'DEL/1001'; // Starting number if no LRs exist
+        return 'HR/00001';
     }
 
     const maxLrNo = Math.max(...lrNumbers);
-    return `DEL/${maxLrNo + 1}`;
+    return `HR/${String(maxLrNo + 1).padStart(5, '0')}`;
 };
+
+const Fieldset: React.FC<{ legend: string; children: React.ReactNode; className?: string }> = ({ legend, children, className = '' }) => (
+    <fieldset className="border border-gray-300 p-4 rounded-lg mb-6 shadow-sm bg-white">
+        <legend className="px-2 font-bold text-base text-ssk-blue">{legend}</legend>
+        <div className={className}>
+            {children}
+        </div>
+    </fieldset>
+);
 
 
 const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDetails, lorryReceipts }) => {
@@ -70,18 +78,37 @@ const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDe
         ...initialLRState,
         lrNo: existingLR ? existingLR.lrNo : generateNewLrNo(lorryReceipts),
     }));
+    const [billingPartyType, setBillingPartyType] = useState<'Consignor' | 'Consignee' | 'Other'>('Consignor');
     const [showPreview, setShowPreview] = useState(false);
     
     useEffect(() => {
         if (existingLR) {
             setFormData(existingLR);
+            if (JSON.stringify(existingLR.billingTo) === JSON.stringify(existingLR.consignor)) {
+                setBillingPartyType('Consignor');
+            } else if (JSON.stringify(existingLR.billingTo) === JSON.stringify(existingLR.consignee)) {
+                setBillingPartyType('Consignee');
+            } else {
+                setBillingPartyType('Other');
+            }
         } else {
+            const newLrNo = generateNewLrNo(lorryReceipts);
             setFormData({
                 ...initialLRState,
-                lrNo: generateNewLrNo(lorryReceipts)
+                lrNo: newLrNo,
             });
+             setBillingPartyType('Consignor');
         }
     }, [existingLR, lorryReceipts]);
+    
+    useEffect(() => {
+        if (billingPartyType === 'Consignor') {
+             setFormData(prev => ({ ...prev, billingTo: prev.consignor }));
+        } else if (billingPartyType === 'Consignee') {
+            setFormData(prev => ({ ...prev, billingTo: prev.consignee }));
+        }
+    }, [billingPartyType, formData.consignor, formData.consignee]);
+
 
     useEffect(() => {
         const totalWeight = formData.items.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
@@ -89,19 +116,9 @@ const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDe
     }, [formData.items]);
 
     useEffect(() => {
-        const totalChargeable = (Number(formData.freight) || 0) + (Number(formData.otherCharges) || 0);
-        // Assuming fixed GST rates for now as per invoice image (2.5% + 2.5%)
-        const cgstAmount = totalChargeable * 0.025;
-        const sgstAmount = totalChargeable * 0.025;
-        
-        setFormData(prev => ({
-            ...prev,
-            cgst: cgstAmount,
-            sgst: sgstAmount,
-            igst: 0, // Assuming no IGST for simplicity
-        }));
-    }, [formData.freight, formData.otherCharges]);
-
+        const calculatedFreight = (Number(formData.actualWeightMT) || 0) * (Number(formData.rate) || 0);
+        setFormData(prev => ({ ...prev, freight: calculatedFreight }));
+    }, [formData.actualWeightMT, formData.rate]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -117,23 +134,6 @@ const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDe
                 [name]: value
             }
         }));
-    };
-
-    const handleStampUpload = (e: React.ChangeEvent<HTMLInputElement>, partyKey: 'consignor') => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setFormData(prev => ({
-                    ...prev,
-                    [partyKey]: {
-                        ...prev[partyKey],
-                        stampUrl: reader.result as string,
-                    }
-                }));
-            };
-            reader.readAsDataURL(file);
-        }
     };
     
     const handleItemChange = (index: number, field: keyof Item, value: string | number) => {
@@ -152,6 +152,17 @@ const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDe
             setFormData(prev => ({ ...prev, items: newItems }));
         }
     };
+
+    const handleChargeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            charges: {
+                ...prev.charges,
+                [name]: parseFloat(value) || 0
+            }
+        }));
+    };
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -169,53 +180,43 @@ const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDe
     };
 
     const handleCreateNew = () => {
-        // This function will be linked to the new "+ Create New LR" button
         if(window.confirm('Are you sure you want to discard current changes and create a new LR?')) {
+            const newLrNo = generateNewLrNo(lorryReceipts);
             setFormData({
                 ...initialLRState,
-                lrNo: generateNewLrNo(lorryReceipts)
+                lrNo: newLrNo,
             });
+            setBillingPartyType('Consignor');
         }
     }
     
-    const renderPartySection = (title: string, partyKey: 'consignor' | 'consignee' | 'billingTo') => (
-        <div className="border border-gray-300">
-            <h3 className="bg-ssk-red text-white p-2 font-bold text-sm">{title.toUpperCase()}</h3>
-            <div className="p-2 space-y-1">
-                <textarea name="name" value={formData[partyKey].name} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="NAME" className="w-full text-xs p-1 border rounded-sm text-gray-900 placeholder-gray-500" rows={2}></textarea>
-                <textarea name="address" value={formData[partyKey].address} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="ADDRESS" className="w-full text-xs p-1 border rounded-sm text-gray-900 placeholder-gray-500" rows={3}></textarea>
-                <input type="text" name="city" value={formData[partyKey].city} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="CITY" className="w-full text-xs p-1 border rounded-sm text-gray-900 placeholder-gray-500" />
-                <input type="text" name="contact" value={formData[partyKey].contact} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="CONTACT" className="w-full text-xs p-1 border rounded-sm text-gray-900 placeholder-gray-500" />
-                <input type="text" name="pan" value={formData[partyKey].pan} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="PAN" className="w-full text-xs p-1 border rounded-sm text-gray-900 placeholder-gray-500" />
-                <input type="text" name="gst" value={formData[partyKey].gst} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="GST" className="w-full text-xs p-1 border rounded-sm text-gray-900 placeholder-gray-500" />
-                 {partyKey === 'consignor' && (
-                    <div className="pt-2">
-                        <label className="block text-xs font-medium text-gray-700">Consignor Stamp</label>
-                        <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={(e) => handleStampUpload(e, 'consignor')} 
-                            className="mt-1 block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-200 file:text-gray-700 hover:file:bg-gray-300" 
-                        />
-                        {formData.consignor.stampUrl && (
-                            <div className="mt-2">
-                                <span className="block text-xs font-medium text-gray-700">Stamp Preview</span>
-                                <img src={formData.consignor.stampUrl} alt="Stamp Preview" className="mt-1 h-16 w-auto object-contain border p-1 rounded-md bg-gray-100" />
-                            </div>
-                        )}
-                    </div>
-                )}
+    const renderPartySection = (title: string, partyKey: 'consignor' | 'consignee' | 'billingTo') => {
+        const isDisabled = partyKey === 'billingTo' && billingPartyType !== 'Other';
+        const disabledClass = isDisabled ? 'bg-gray-100 cursor-not-allowed' : 'text-gray-900 placeholder-gray-500';
+
+        return (
+            <div className="border border-gray-300">
+                <h3 className="bg-ssk-red text-white p-2 font-bold text-sm">{title.toUpperCase()}</h3>
+                <div className="p-2 space-y-1">
+                    <textarea name="name" value={formData[partyKey].name} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="NAME" className={`w-full text-xs p-1 border rounded-sm ${disabledClass}`} rows={2} disabled={isDisabled}></textarea>
+                    <textarea name="address" value={formData[partyKey].address} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="ADDRESS" className={`w-full text-xs p-1 border rounded-sm ${disabledClass}`} rows={3} disabled={isDisabled}></textarea>
+                    <input type="text" name="city" value={formData[partyKey].city} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="CITY" className={`w-full text-xs p-1 border rounded-sm ${disabledClass}`} disabled={isDisabled}/>
+                    <input type="text" name="contact" value={formData[partyKey].contact} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="CONTACT" className={`w-full text-xs p-1 border rounded-sm ${disabledClass}`} disabled={isDisabled}/>
+                    <input type="text" name="pan" value={formData[partyKey].pan} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="PAN" className={`w-full text-xs p-1 border rounded-sm ${disabledClass}`} disabled={isDisabled}/>
+                    <input type="text" name="gst" value={formData[partyKey].gst} onChange={(e) => handlePartyChange(partyKey, e)} placeholder="GST" className={`w-full text-xs p-1 border rounded-sm ${disabledClass}`} disabled={isDisabled}/>
+                </div>
             </div>
-        </div>
-    );
+        );
+    }
+    
+    const totalCharges = Object.values(formData.charges).reduce((sum, charge) => sum + (charge || 0), 0);
 
     const inputClass = "w-full p-2 border-gray-200 bg-gray-100 rounded-md text-sm text-gray-900 placeholder-gray-500";
     const labelClass = "block text-xs font-bold text-gray-600 uppercase mb-1";
 
     return (
-        <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg">
-             {/* New Navigation Header */}
-            <div className="flex items-center space-x-2 mb-6 border-b pb-4">
+        <div className="bg-slate-50 p-4 sm:p-6 rounded-lg shadow-lg">
+             <div className="flex items-center space-x-2 mb-6 border-b pb-4">
                 <button onClick={onCancel} className="flex items-center bg-gray-100 text-gray-700 px-4 py-2 rounded-md font-semibold hover:bg-gray-200 transition-colors text-sm">
                     <ListIcon className="w-5 h-5 mr-2" />
                     View LR Details
@@ -226,10 +227,8 @@ const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDe
                 </button>
             </div>
             
-            <form onSubmit={handleSubmit} className="space-y-6">
-                {/* New Top Section */}
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-4">
-                    {/* Row 1 */}
+            <form onSubmit={handleSubmit}>
+                <Fieldset legend="Core Details" className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-4">
                     <div>
                         <label className={labelClass}>LR TYPE*</label>
                         <div className="flex items-center space-x-4 h-10">
@@ -244,32 +243,43 @@ const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDe
                         </div>
                     </div>
                     <div><label className={labelClass}>TRUCK NO*</label><input type="text" name="truckNo" placeholder="TRUCK NO" value={formData.truckNo} onChange={handleChange} className={`${inputClass} border-red-300`} required /></div>
-                    <div><label className={labelClass}>LR NO*</label><input type="text" value={formData.lrNo} disabled className={`${inputClass} bg-gray-200 cursor-not-allowed`} /></div>
+                    <div><label className={labelClass}>C Note NO*</label><input type="text" value={formData.lrNo} disabled className={`${inputClass} bg-gray-200 cursor-not-allowed`} /></div>
                     <div><label className={labelClass}>DATE*</label><input type="date" name="date" value={formData.date} onChange={handleChange} className={inputClass} required /></div>
                     <div><label className={labelClass}>FROM PLACE*</label><input type="text" name="fromPlace" placeholder="FROM PLACE" value={formData.fromPlace} onChange={handleChange} className={inputClass} required /></div>
                     <div><label className={labelClass}>TO PLACE*</label><input type="text" name="toPlace" placeholder="TO PLACE" value={formData.toPlace} onChange={handleChange} className={inputClass} required /></div>
-
-                    {/* Row 2 */}
-                    <div><label className={labelClass}>INVOICE</label><input type="text" name="invoiceNo" placeholder="INVOICE" value={formData.invoiceNo} onChange={handleChange} className={inputClass} /></div>
+                </Fieldset>
+                
+                <Fieldset legend="Shipment Details" className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-4">
+                     <div><label className={labelClass}>INVOICE</label><input type="text" name="invoiceNo" placeholder="INVOICE" value={formData.invoiceNo} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>INVOICE AMOUNT</label><input type="number" name="invoiceAmount" placeholder="INVOICE AMOUNT" value={formData.invoiceAmount} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>INVOICE DATE</label><input type="date" name="invoiceDate" value={formData.invoiceDate} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>EWAY BILL NO</label><input type="text" name="ewayBillNo" placeholder="EWAY BILL NO" value={formData.ewayBillNo} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>EWAY BILL DATE</label><input type="date" name="ewayBillDate" value={formData.ewayBillDate} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>EWAY EX. DATE</label><input type="date" name="ewayExDate" value={formData.ewayExDate} onChange={handleChange} className={inputClass} /></div>
-                    
-                    {/* Row 3 */}
                     <div><label className={labelClass}>P.O. NO</label><input type="text" name="poNo" placeholder="P.O. NO" value={formData.poNo} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>P.O. DATE</label><input type="date" name="poDate" value={formData.poDate} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>METHOD OF PACKING</label><input type="text" name="methodOfPacking" placeholder="METHOD OF PACKING" value={formData.methodOfPacking} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>ADDRESS OF DELIVERY</label><input type="text" name="addressOfDelivery" placeholder="ADDRESS OF DELIVERY" value={formData.addressOfDelivery} onChange={handleChange} className={inputClass} /></div>
-                    <div><label className={labelClass}>CHARGED WEIGHT</label><input type="number" name="chargedWeight" placeholder="CHARGED WEIGHT" value={formData.chargedWeight} onChange={handleChange} className={inputClass} /></div>
                     <div><label className={labelClass}>LORRY TYPE</label><input type="text" name="lorryType" placeholder="LORRY TYPE" value={formData.lorryType} onChange={handleChange} className={inputClass} /></div>
-                </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t">
-                     <div>
+                </Fieldset>
+                
+                 <Fieldset legend="Billing Details" className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
                         <label className={labelClass}>BILLING PARTY</label>
-                        <input type="text" name="name" placeholder="Billing Party Name" value={formData.billingTo.name} onChange={(e) => handlePartyChange('billingTo', e)} className={inputClass} />
+                        <div className="flex items-center space-x-4 mt-2">
+                             <div className="flex items-center">
+                                <input id="bill_consignor" type="radio" name="billingPartyType" value="Consignor" checked={billingPartyType === 'Consignor'} onChange={() => setBillingPartyType('Consignor')} className="h-4 w-4 text-ssk-blue focus:ring-ssk-blue border-gray-300" />
+                                <label htmlFor="bill_consignor" className="ml-2 block text-sm text-gray-900">Consignor</label>
+                            </div>
+                            <div className="flex items-center">
+                                <input id="bill_consignee" type="radio" name="billingPartyType" value="Consignee" checked={billingPartyType === 'Consignee'} onChange={() => setBillingPartyType('Consignee')} className="h-4 w-4 text-ssk-blue focus:ring-ssk-blue border-gray-300" />
+                                <label htmlFor="bill_consignee" className="ml-2 block text-sm text-gray-900">Consignee</label>
+                            </div>
+                             <div className="flex items-center">
+                                <input id="bill_other" type="radio" name="billingPartyType" value="Other" checked={billingPartyType === 'Other'} onChange={() => setBillingPartyType('Other')} className="h-4 w-4 text-ssk-blue focus:ring-ssk-blue border-gray-300" />
+                                <label htmlFor="bill_other" className="ml-2 block text-sm text-gray-900">Other</label>
+                            </div>
+                        </div>
                      </div>
                      <div>
                         <label className={labelClass}>GST PAID BY</label>
@@ -279,22 +289,17 @@ const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDe
                             <option>Consignee</option>
                         </select>
                      </div>
-                 </div>
+                </Fieldset>
 
-
-                {/* Parties Section */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Fieldset legend="Party Details" className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {renderPartySection('Consignor', 'consignor')}
                     {renderPartySection('Consignee', 'consignee')}
-                    {renderPartySection('Billing To', 'billingTo')}
-                </div>
-                 <div className="flex items-center">
-                    <label className="w-24 font-bold text-gray-900">AGENT</label>
-                    <input type="text" name="agent" value={formData.agent} onChange={handleChange} className="w-full p-1 border text-gray-900 placeholder-gray-500" />
-                </div>
+                    {billingPartyType === 'Other' && renderPartySection('Billing To', 'billingTo')}
+                </Fieldset>
 
-                {/* Item Details Section */}
-                <div className="border border-gray-200 p-3 rounded-md shadow-sm bg-white">
+                <div className="bg-white p-4 rounded-lg shadow-sm border"><label className={`${labelClass} mb-2`}>AGENT</label><input type="text" name="agent" value={formData.agent} onChange={handleChange} className={inputClass} /></div>
+
+                <div className="border border-gray-300 p-3 rounded-lg shadow-sm bg-white">
                     <div className="flex justify-between items-center mb-2">
                         <h3 className="font-bold text-base text-gray-800">Item Details</h3>
                         <button type="button" onClick={addItem} className="flex items-center bg-gray-100 text-gray-800 px-3 py-1.5 rounded-md text-xs font-bold hover:bg-gray-200 transition-colors">
@@ -326,56 +331,48 @@ const LRForm: React.FC<LRFormProps> = ({ onSave, existingLR, onCancel, companyDe
                     </div>
                 </div>
 
-                {/* Other fields Section */}
-                <div className="space-y-4 pt-4 text-gray-800">
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                        <div>
-                            <label className={labelClass}>TOTAL WEIGHT (MT)</label>
-                            <input type="number" name="weight" value={formData.weight} readOnly placeholder="Auto-calculated" className={`${inputClass} bg-gray-200 cursor-not-allowed`} />
-                        </div>
-                        <div><label className={labelClass}>ACTUAL WEIGHT (MT)</label><input type="number" name="actualWeightMT" value={formData.actualWeightMT} onChange={handleChange} placeholder="WEIGHT (MT)" className={inputClass} /></div>
-                        <div><label className={labelClass}>HEIGHT</label><input type="number" name="height" value={formData.height} onChange={handleChange} placeholder="HEIGHT" className={inputClass} /></div>
-                        <div><label className={labelClass}>EXTRA HEIGHT</label><input type="number" name="extraHeight" value={formData.extraHeight} onChange={handleChange} placeholder="EX HEIGHT" className={inputClass} /></div>
-                        <div><label className={labelClass}>RATE</label><input type="number" name="rate" value={formData.rate} onChange={handleChange} placeholder="RATE" className={inputClass} /></div>
-                        <div><label className={labelClass}>RATE ON</label><select name="rateOn" value={formData.rateOn} onChange={handleChange} className={inputClass}><option value="">Select Rate Type</option><option value="Ton">Ton</option><option value="Trip">Trip</option><option value="Pcs">Pcs</option></select></div>
-
+                <Fieldset legend="Weight & Rate" className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                     <div>
+                        <label className={labelClass}>TOTAL PKGS WEIGHT</label>
+                        <input type="number" name="weight" value={formData.weight} readOnly placeholder="Auto-calculated" className={`${inputClass} bg-gray-200 cursor-not-allowed`} />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div><label className={labelClass}>FREIGHT</label><input type="number" name="freight" value={formData.freight} onChange={handleChange} placeholder="FREIGHT" className={inputClass} /></div>
-                        <div><label className={labelClass}>OTHER CHARGES</label><input type="number" name="otherCharges" value={formData.otherCharges} onChange={handleChange} placeholder="OTHER CHARGES" className={inputClass} /></div>
-                        <div>
-                            <label className={labelClass}>TOTAL (FREIGHT + CHARGES)</label>
-                            <input type="number" value={(Number(formData.freight) || 0) + (Number(formData.otherCharges) || 0)} readOnly className={`${inputClass} bg-gray-200 cursor-not-allowed`} />
-                        </div>
+                    <div><label className={labelClass}>ACTUAL WEIGHT (MT)</label><input type="number" name="actualWeightMT" value={formData.actualWeightMT} onChange={handleChange} placeholder="WEIGHT (MT)" className={inputClass} /></div>
+                     <div><label className={labelClass}>CHARGED WEIGHT</label><input type="number" name="chargedWeight" placeholder="CHARGED WEIGHT" value={formData.chargedWeight} onChange={handleChange} className={inputClass} /></div>
+                    <div><label className={labelClass}>RATE</label><input type="number" name="rate" value={formData.rate} onChange={handleChange} placeholder="RATE" className={inputClass} /></div>
+                    <div>
+                        <label className={labelClass}>RATE ON</label>
+                        <input type="text" name="rateOn" value={formData.rateOn} readOnly className={`${inputClass} bg-gray-200 cursor-not-allowed`} />
                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label className={labelClass}>CGST ({formData.cgst > 0 ? '2.5%' : '0%'})</label>
-                             <input type="number" value={formData.cgst.toFixed(2)} readOnly className={`${inputClass} bg-gray-200 cursor-not-allowed`} />
-                        </div>
-                         <div>
-                            <label className={labelClass}>SGST ({formData.sgst > 0 ? '2.5%' : '0%'})</label>
-                             <input type="number" value={formData.sgst.toFixed(2)} readOnly className={`${inputClass} bg-gray-200 cursor-not-allowed`} />
-                        </div>
-                         <div>
-                            <label className={labelClass}>NET TOTAL</label>
-                             <input type="number" value={((Number(formData.freight) || 0) + (Number(formData.otherCharges) || 0) + formData.cgst + formData.sgst).toFixed(2)} readOnly className={`${inputClass} bg-green-100 border-green-300 font-bold cursor-not-allowed`} />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label className={labelClass}>EMPLOYEE</label>
-                            <input type="text" name="employee" value={formData.employee} onChange={handleChange} placeholder="Enter Employee Name" className={inputClass} />
-                        </div>
-                        <div>
-                            <label className={labelClass}>TRUCK DRIVER NO</label>
-                            <input type="text" name="truckDriverNo" value={formData.truckDriverNo} onChange={handleChange} placeholder="Enter Driver No." className={inputClass} />
-                        </div>
-                    </div>
-                    <div><label className={labelClass}>REMARK</label><textarea name="remark" value={formData.remark} onChange={handleChange} placeholder="Enter remarks..." className={`${inputClass} h-24`}></textarea></div>
-                </div>
+                </Fieldset>
                 
-                <div className="flex flex-col sm:flex-row sm:justify-center gap-4 pt-4 border-t">
+                <Fieldset legend="Charges Breakdown" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                    <div><label className={labelClass}>Hamail</label><input type="number" name="hamail" value={formData.charges.hamail} onChange={handleChargeChange} className={inputClass} /></div>
+                    <div><label className={labelClass}>Surcharge</label><input type="number" name="surCharge" value={formData.charges.surCharge} onChange={handleChargeChange} className={inputClass} /></div>
+                    <div><label className={labelClass}>ST Charge</label><input type="number" name="stCharge" value={formData.charges.stCharge} onChange={handleChargeChange} className={inputClass} /></div>
+                    <div><label className={labelClass}>Collection</label><input type="number" name="collectionCharge" value={formData.charges.collectionCharge} onChange={handleChargeChange} className={inputClass} /></div>
+                    <div><label className={labelClass}>D.Dty Charge</label><input type="number" name="ddCharge" value={formData.charges.ddCharge} onChange={handleChargeChange} className={inputClass} /></div>
+                    <div><label className={labelClass}>Other</label><input type="number" name="otherCharge" value={formData.charges.otherCharge} onChange={handleChargeChange} className={inputClass} /></div>
+                    <div><label className={labelClass}>Risk</label><input type="number" name="riskCharge" value={formData.charges.riskCharge} onChange={handleChargeChange} className={inputClass} /></div>
+                </Fieldset>
+                
+                <Fieldset legend="Totals" className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label className={labelClass}>FREIGHT</label>
+                        <input type="number" name="freight" value={formData.freight} readOnly placeholder="FREIGHT" className={`${inputClass} bg-gray-200 cursor-not-allowed`} />
+                    </div>
+                     <div>
+                        <label className={labelClass}>TOTAL OTHER CHARGES</label>
+                        <input type="number" value={totalCharges} readOnly className={`${inputClass} bg-gray-200 cursor-not-allowed`} />
+                    </div>
+                    <div>
+                        <label className={labelClass}>GRAND TOTAL</label>
+                        <input type="number" value={(Number(formData.freight) || 0) + totalCharges} readOnly className={`${inputClass} bg-green-100 border-green-300 font-bold cursor-not-allowed`} />
+                    </div>
+                </Fieldset>
+                
+                <div className="bg-white p-4 rounded-lg shadow-sm border"><label className={labelClass}>REMARK</label><textarea name="remark" value={formData.remark} onChange={handleChange} placeholder="Enter remarks..." className={`${inputClass} h-24`}></textarea></div>
+                
+                <div className="flex flex-col sm:flex-row sm:justify-center gap-4 pt-6 mt-4 border-t">
                     <button type="submit" className="w-full sm:w-auto bg-ssk-blue text-white px-8 py-2.5 rounded-md hover:bg-blue-800 font-bold text-base shadow-md transition-transform transform hover:scale-105">
                         {existingLR ? 'UPDATE & SAVE' : 'PREVIEW & SAVE'}
                     </button>
